@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "apex-gateway": {
+      "command": "C:\\HOD_SATISH_SIR_FACULTY_FOLDER_DONT_TOUCH\\apex-mcp\\.venv\\Scripts\\python.exe",
+      "args": [
+        "C:\\HOD_SATISH_SIR_FACULTY_FOLDER_DONT_TOUCH\\apex-mcp\\apex-gateway\\mcp_server.py"
+      ],
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    }
+  }
+}
+

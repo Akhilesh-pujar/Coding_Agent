@@ -17,6 +17,8 @@ from app.api.health import router as health_router
 from app.api.models import router as models_router
 from app.api.chat import router as chat_router
 from app.api.routing import router as routing_router
+from app.api.auth import router as auth_router
+from app.api.rooms import router as rooms_router
 
 logger = logging.getLogger("apex.gateway")
 
@@ -141,6 +143,8 @@ def create_app() -> FastAPI:
     application.include_router(models_router)
     application.include_router(chat_router)
     application.include_router(routing_router)
+    application.include_router(auth_router)
+    application.include_router(rooms_router)
 
     return application
 

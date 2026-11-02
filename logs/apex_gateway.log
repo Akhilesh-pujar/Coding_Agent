@@ -1,0 +1,6 @@
+2026-11-02 15:23:51 [INFO] [apex.gateway] Initializing APEX API Gateway v1.0.0 on 0.0.0.0:8000
+2026-11-02 15:23:51 [INFO] [app.database.connection] Database tables initialized successfully.
+2026-11-02 15:23:51 [INFO] [apex.gateway] SQLite audit database initialized.
+2026-11-02 15:23:51 [INFO] [apex.gateway] Ollama server connected at http://localhost:11434 (version: 0.40.13)
+2026-11-02 15:41:47 [INFO] [apex.gateway] Shutting down APEX API Gateway...
+2026-11-02 15:41:47 [INFO] [apex.gateway] Ollama client connection pool closed.

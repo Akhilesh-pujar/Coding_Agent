@@ -53,28 +53,36 @@ apex-gateway/
 ├── app/
 │   ├── main.py              # Application factory, lifespan, error handling, CORS
 │   ├── config.py            # Type-safe settings with Pydantic BaseSettings
-│   ├── dependencies.py      # Defdbiders
+│   ├── dependencies.py      # Dual-auth (JWT + API key) & database session providers
 │   ├── api/
 │   │   ├── health.py        # Gateway & Ollama health monitoring (/health)
+│   │   ├── auth.py          # User registration, login, personal API keys (/v1/auth)
+│   │   ├── rooms.py         # Persistent multi-room chat & history (/v1/rooms)
 │   │   ├── models.py        # OpenAI-compatible model discovery (/v1/models)
 │   │   ├── chat.py          # OpenAI-compatible completions (/v1/chat/completions)
 │   │   └── routing.py       # Heuristic routing diagnostics (/api/route)
 │   ├── core/
+│   │   ├── security.py      # Password hashing (bcrypt) & JWT token signing (PyJWT)
 │   │   ├── ollama_client.py # Async HTTPX client with connection pooling
 │   │   ├── model_registry.py# Real-time model verification against Ollama
 │   │   ├── model_router.py  # Intent & complexity analyzer (Fast vs Pro)
 │   │   ├── authentication.py# Constant-time API Key verification
 │   │   └── logging_config.py# Structured logging & credential sanitization
 │   ├── schemas/
+│   │   ├── auth.py          # Registration, login, token, and API key schemas
+│   │   ├── rooms.py         # Room creation, summary, detail, and room chat schemas
 │   │   ├── chat.py          # OpenAI Pydantic schemas (stream & non-stream)
 │   │   └── models.py        # Model list & routing schemas
 │   ├── services/
+│   │   ├── room_service.py  # Room management & sliding-window context history
 │   │   ├── chat_service.py  # Request lifecycle, SSE formatting, token tracking
 │   │   └── routing_service.py # Routing evaluation orchestrator
 │   └── database/
 │       ├── connection.py    # Async SQLAlchemy 2.x SQLite session engine
-│       └── models.py        # RequestLog schema for audit metrics
+│       └── models.py        # User, UserApiKey, ChatRoom, ChatMessage, RequestLog
 ├── tests/
+│   ├── test_auth.py         # User registration, JWT login, API key lifecycle
+│   ├── test_rooms.py        # Chat room persistence, sliding context, isolation
 │   ├── test_health.py       # Health checks and offline tests
 │   ├── test_models.py       # Model discovery and auth tests
 │   ├── test_chat.py         # Streaming, non-streaming, timeouts, errors
@@ -281,6 +289,68 @@ curl -X POST http://127.0.0.1:8000/api/route \
 ```
 
 > **Automatic Chat Routing:** In `/v1/chat/completions`, if `"model"` is omitted or set to `"auto"`, the gateway automatically evaluates the conversation and selects between `apex-fast` and `apex-pro` on the fly!
+
+---
+
+### 5. User Authentication & Personal API Keys (`/v1/auth/*`)
+
+#### User Registration & Login (JWT)
+```bash
+# Register
+curl -X POST http://127.0.0.1:8000/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username": "prof_satish", "email": "satish@apex.edu", "password": "SecurePassword123!", "role": "faculty"}'
+
+# Login (returns JWT access_token)
+curl -X POST http://127.0.0.1:8000/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username_or_email": "prof_satish", "password": "SecurePassword123!"}'
+```
+
+#### Generating Personal API Key for Cabin IDE / Antigravity
+```bash
+# Generate key (Bearer <JWT>)
+curl -X POST http://127.0.0.1:8000/v1/auth/api-keys \
+  -H "Authorization: Bearer <YOUR_JWT_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Cabin Laptop VS Code", "expires_in_days": 60}'
+```
+Returns a persistent key starting with `apex_live_...` that can be directly passed into IDE extensions or Antigravity!
+
+---
+
+### 6. Persistent Multi-Room Chat Sessions (`/v1/rooms/*`)
+
+Create isolated conversation threads with sliding-window history and auto-routing:
+
+```bash
+# 1. Create a Chat Room
+curl -X POST http://127.0.0.1:8000/v1/rooms \
+  -H "Authorization: Bearer <JWT_OR_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Compiler Deadlock Analysis",
+    "default_model": "auto",
+    "system_prompt": "You are a senior systems engineer specializing in concurrency."
+  }'
+
+# 2. Chat in the Room (Context and history automatically persisted!)
+curl -X POST http://127.0.0.1:8000/v1/rooms/{room_id}/chat \
+  -H "Authorization: Bearer <JWT_OR_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Why does this mutex deadlock under high load?",
+    "stream": false
+  }'
+
+# 3. List User Rooms with Message Counts
+curl -X GET http://127.0.0.1:8000/v1/rooms \
+  -H "Authorization: Bearer <JWT_OR_API_KEY>"
+
+# 4. Retrieve Full Conversation History
+curl -X GET http://127.0.0.1:8000/v1/rooms/{room_id} \
+  -H "Authorization: Bearer <JWT_OR_API_KEY>"
+```
 
 ---
 

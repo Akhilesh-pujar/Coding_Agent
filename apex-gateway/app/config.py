@@ -59,12 +59,31 @@ class Settings(BaseSettings):
     APEX_VERSION: str = "1.0.0"
     MAX_REQUEST_BODY_SIZE: int = 10 * 1024 * 1024  # 10 MB
 
+    # JWT Configuration
+    JWT_SECRET_KEY: str = Field(
+        default="apex-jwt-secret-key-change-in-production-2026",
+        description="Cryptographic secret key for signing JWT tokens"
+    )
+    JWT_ALGORITHM: str = Field(
+        default="HS256",
+        description="JWT encoding algorithm"
+    )
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(
+        default=1440,
+        description="Token expiration duration in minutes (default 24 hours)"
+    )
+
     @field_validator("APEX_DATABASE_URL", mode="before")
     @classmethod
-    def normalize_sqlite_url(cls, v: str) -> str:
-        """Convert standard sqlite:/// to async sqlite+aiosqlite:/// if necessary."""
-        if isinstance(v, str) and v.startswith("sqlite:///") and not v.startswith("sqlite+aiosqlite:///"):
-            return v.replace("sqlite:///", "sqlite+aiosqlite:///")
+    def normalize_database_url(cls, v: str) -> str:
+        """Convert standard sqlite:/// or postgresql:/// to async drivers."""
+        if isinstance(v, str):
+            if v.startswith("sqlite:///") and not v.startswith("sqlite+aiosqlite:///"):
+                return v.replace("sqlite:///", "sqlite+aiosqlite:///")
+            if v.startswith("postgres://"):
+                return v.replace("postgres://", "postgresql+asyncpg://", 1)
+            if v.startswith("postgresql://") and not v.startswith("postgresql+asyncpg://"):
+                return v.replace("postgresql://", "postgresql+asyncpg://", 1)
         return v
 
     @property

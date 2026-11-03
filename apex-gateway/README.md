@@ -11,39 +11,40 @@ It provides a unified OpenAI-compatible interface, intelligent task-based model 
 ```
                       +-------------------------------------------------+
                       |              Client Applications                |
-                      |  (Antigravity, VS Code, MCP Servers, cURL, etc) |
+                      | (Web Portal, Antigravity, VS Code, MCP, cURL)   |
                       +-------------------------------------------------+
-                                              |
-                                              | (Bearer Auth + HTTP / SSE)
-                                              v
+                                               |
+                                               | (JWT Bearer / API Key + HTTP / SSE)
+                                               v
                       +-------------------------------------------------+
                       |           APEX API Gateway (FastAPI)            |
                       |                                                 |
-                      |   /health        /v1/models   /api/route        |
-                      |   /v1/chat/completions                          |
+                      |   / (Developer Portal)   /health   /api/route   |
+                      |   /v1/auth/*    /v1/rooms/*     /v1/models     |
+                      |   /v1/chat/completions   /v1/completions        |
                       +-------------------------------------------------+
-                                      |                 |
-                   +------------------+                 +----------------+
-                   | (Intelligent Model Router)                          | (Async Audit)
-                   v                                                     v
-      +-------------------------+                           +-------------------------+
-      |  Model Router & Heuristic|                          |   SQLite Audit DB       |
-      |  - Fast: 7B (Docs/Simple) |                         |   (Request durations,   |
-      |  - Pro: 14B (Architecture)|                         |    tokens, status)      |
-      +-------------------------+                           +-------------------------+
-                   |
-                   v
-      +-------------------------------------------------+
-      |                 Ollama Client                   |
-      |         Async HTTP Connection Pool              |
-      +-------------------------------------------------+
-                   |
-                   v
-      +-------------------------------------------------+
-      |       Local Ollama Engine (127.0.0.1:11434)      |
-      |   - apex-fast:latest (Qwen 2.5 Coder 7B)        |
-      |   - apex-pro:latest  (Qwen 2.5 Coder 14B)       |
-      +-------------------------------------------------+
+                                       |                 |
+                    +------------------+                 +----------------+
+                    | (Intelligent Model Router)                          | (Async DB Engine)
+                    v                                                     v
+       +-------------------------+                           +-------------------------+
+       |  Model Router & Heuristic|                          |  Storage & Audit DB     |
+       |  - Fast: 7B (Docs/Simple) |                         |  (SQLite / PostgreSQL)  |
+       |  - Pro: 14B (Architecture)|                         |  Users, Keys, Rooms,    |
+       +-------------------------+                           |  Messages, RequestLogs  |
+                    |                                        +-------------------------+
+                    v
+       +-------------------------------------------------+
+       |                 Ollama Client                   |
+       |         Async HTTP Connection Pool              |
+       +-------------------------------------------------+
+                    |
+                    v
+       +-------------------------------------------------+
+       |       Local Ollama Engine (127.0.0.1:11434)      |
+       |   - apex-fast:latest (Qwen 2.5 Coder 7B)        |
+       |   - apex-pro:latest  (Qwen 2.5 Coder 14B)       |
+       +-------------------------------------------------+
 ```
 
 ### Module Organization
@@ -51,22 +52,22 @@ It provides a unified OpenAI-compatible interface, intelligent task-based model 
 ```
 apex-gateway/
 ├── app/
-│   ├── main.py              # Application factory, lifespan, error handling, CORS
-│   ├── config.py            # Type-safe settings with Pydantic BaseSettings
-│   ├── dependencies.py      # Dual-auth (JWT + API key) & database session providers
+│   ├── main.py              # Application factory, lifespan, error handling, CORS, static mount
+│   ├── config.py            # Type-safe settings with Pydantic BaseSettings & DB validator
+│   ├── dependencies.py      # Tri-layer auth (JWT + API key + Master key) & DB session providers
 │   ├── api/
 │   │   ├── health.py        # Gateway & Ollama health monitoring (/health)
-│   │   ├── auth.py          # User registration, login, personal API keys (/v1/auth)
-│   │   ├── rooms.py         # Persistent multi-room chat & history (/v1/rooms)
+│   │   ├── auth.py          # User registration, login, personal API keys (/v1/auth/*)
+│   │   ├── rooms.py         # Persistent multi-room chat & history (/v1/rooms/*)
 │   │   ├── models.py        # OpenAI-compatible model discovery (/v1/models)
 │   │   ├── chat.py          # OpenAI-compatible completions (/v1/chat/completions)
 │   │   └── routing.py       # Heuristic routing diagnostics (/api/route)
 │   ├── core/
 │   │   ├── security.py      # Password hashing (bcrypt) & JWT token signing (PyJWT)
 │   │   ├── ollama_client.py # Async HTTPX client with connection pooling
-│   │   ├── model_registry.py# Real-time model verification against Ollama
+│   │   ├── model_registry.py# Real-time model verification against Ollama (30s TTL cache)
 │   │   ├── model_router.py  # Intent & complexity analyzer (Fast vs Pro)
-│   │   ├── authentication.py# Constant-time API Key verification
+│   │   ├── authentication.py# Auth re-exports & key validation
 │   │   └── logging_config.py# Structured logging & credential sanitization
 │   ├── schemas/
 │   │   ├── auth.py          # Registration, login, token, and API key schemas
@@ -78,8 +79,10 @@ apex-gateway/
 │   │   ├── chat_service.py  # Request lifecycle, SSE formatting, token tracking
 │   │   └── routing_service.py # Routing evaluation orchestrator
 │   └── database/
-│       ├── connection.py    # Async SQLAlchemy 2.x SQLite session engine
+│       ├── connection.py    # Async SQLAlchemy 2.x session engine (SQLite/PostgreSQL)
 │       └── models.py        # User, UserApiKey, ChatRoom, ChatMessage, RequestLog
+├── static/
+│   └── index.html           # Dark-themed Web Developer Portal (Auth, Keys, VS Code setup)
 ├── tests/
 │   ├── test_auth.py         # User registration, JWT login, API key lifecycle
 │   ├── test_rooms.py        # Chat room persistence, sliding context, isolation
@@ -87,7 +90,8 @@ apex-gateway/
 │   ├── test_models.py       # Model discovery and auth tests
 │   ├── test_chat.py         # Streaming, non-streaming, timeouts, errors
 │   └── test_routing.py      # Heuristic routing and user override tests
-├── logs/                    # Rotating log files
+├── logs/                    # Rotating log files (apex_gateway.log)
+├── mcp_server.py            # Model Context Protocol stdio server for Antigravity & IDEs
 ├── .env.example             # Template environment variables
 ├── .env                     # Local configuration
 ├── run.py                   # CLI entrypoint
@@ -351,6 +355,62 @@ curl -X GET http://127.0.0.1:8000/v1/rooms \
 curl -X GET http://127.0.0.1:8000/v1/rooms/{room_id} \
   -H "Authorization: Bearer <JWT_OR_API_KEY>"
 ```
+
+---
+
+### 7. Web Developer Portal (`GET /`)
+
+The gateway serves a built-in dark-themed single-page Developer Portal directly at `http://127.0.0.1:8000/`:
+
+- **User Registration & Login**: Authenticate to obtain a session and JWT token.
+- **Personal API Key Generation**: Generate keys (`apex_live_...`) with custom names and expiration days.
+- **VS Code / Continue Config Generator**: One-click copy configuration block pre-filled with host and models.
+- **Active Keys Management**: View key prefixes, creation dates, expiration dates, and revoke compromised keys.
+- **API Documentation Link**: Instant navigation to `/docs` (Swagger UI) from the header.
+
+---
+
+### 8. Database Administration & PostgreSQL Migration
+
+APEX supports both SQLite (zero-config local file) and PostgreSQL (production multi-user):
+
+```bash
+# Inspect tables and records in terminal
+python inspect_db.py
+
+# Run end-to-end quickstart test
+python quickstart.py
+
+# Migrate all tables (Users, API Keys, Rooms, Messages, Audit Logs) from SQLite to PostgreSQL
+python migrate_sqlite_to_postgres.py
+```
+
+Switching to PostgreSQL in `.env`:
+```env
+APEX_DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/apex_db
+```
+
+---
+
+### 9. Model Context Protocol (MCP) Integration
+
+The gateway bundles an MCP stdio server (`mcp_server.py`) adhering to protocol version `2024-11-05`:
+
+- **Tools exposed**:
+  - `apex_chat`: Send instructions to local Ollama models with auto-routing.
+  - `apex_route`: Evaluate task complexity and return recommended model tier.
+  - `apex_model_status`: Check gateway health and verified models.
+- **Client Configuration** (`.agents/mcp_config.json`):
+  ```json
+  {
+    "mcpServers": {
+      "apex-gateway": {
+        "command": "python",
+        "args": ["apex-gateway/mcp_server.py"]
+      }
+    }
+  }
+  ```
 
 ---
 

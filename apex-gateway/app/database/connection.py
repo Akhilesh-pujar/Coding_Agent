@@ -10,6 +10,8 @@ logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
+from sqlalchemy.pool import NullPool
+
 is_sqlite = "sqlite" in settings.APEX_DATABASE_URL
 
 engine_kwargs = {
@@ -19,9 +21,7 @@ engine_kwargs = {
 if is_sqlite:
     engine_kwargs["connect_args"] = {"check_same_thread": False}
 else:
-    engine_kwargs["pool_pre_ping"] = True
-    engine_kwargs["pool_size"] = 10
-    engine_kwargs["max_overflow"] = 20
+    engine_kwargs["poolclass"] = NullPool
 
 engine = create_async_engine(settings.APEX_DATABASE_URL, **engine_kwargs)
 

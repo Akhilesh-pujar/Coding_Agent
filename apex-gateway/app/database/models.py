@@ -51,7 +51,7 @@ class UserApiKey(Base):
         Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(64), nullable=False)  # e.g., "Cabin VS Code", "Antigravity IDE"
-    key_prefix: Mapped[str] = mapped_column(String(16), nullable=False)  # First 10 chars e.g. "apex_live_a1b2"
+    key_prefix: Mapped[str] = mapped_column(String(32), nullable=False)  # e.g. "apex_live_a1b2..."
     key_hash: Mapped[str] = mapped_column(String(128), index=True, nullable=False)  # SHA-256 hash of full token
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(

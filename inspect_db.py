@@ -1,50 +1,52 @@
-"""Quick database inspector to view tables and stored data in terminal."""
+"""Universal Database Inspector: Views tables and rows in PostgreSQL or SQLite."""
 
-import sqlite3
+import asyncio
+import sys
 from pathlib import Path
 
+# Add gateway path
+sys.path.insert(0, "apex-gateway")
+from sqlalchemy import select, inspect
+from sqlalchemy.ext.asyncio import create_async_engine
+from app.config import get_settings
+from app.database.models import User, UserApiKey, ChatRoom, ChatMessage, RequestLog
 
-def inspect():
-    db_path = Path("apex.db")
-    if not db_path.exists():
-        # Check if located inside apex-gateway/
-        db_path = Path("apex-gateway/apex.db")
 
-    if not db_path.exists():
-        print("Database 'apex.db' not found. Run quickstart.py or the gateway first.")
-        return
+async def inspect_db():
+    settings = get_settings()
+    url = settings.APEX_DATABASE_URL
+    print("=" * 65)
+    print(f" DATABASE INSPECTOR: {url}")
+    print("=" * 65)
 
-    print(f"Reading from database: {db_path.resolve()}\n")
-    conn = sqlite3.connect(db_path)
-    cur = conn.cursor()
+    is_sqlite = "sqlite" in url
+    engine = create_async_engine(
+        url,
+        connect_args={"check_same_thread": False} if is_sqlite else {},
+    )
 
-    # Get list of tables
-    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';")
-    tables = [r[0] for r in cur.fetchall()]
+    models = [
+        ("users", User),
+        ("user_api_keys", UserApiKey),
+        ("chat_rooms", ChatRoom),
+        ("chat_messages", ChatMessage),
+        ("request_logs", RequestLog),
+    ]
 
-    for table in tables:
-        print("=" * 60)
-        print(f"TABLE: {table}")
-        print("=" * 60)
+    async with engine.connect() as conn:
+        for name, model_cls in models:
+            print(f"\n--- TABLE: {name} ---")
+            res = await conn.execute(select(model_cls).limit(5))
+            rows = res.fetchall()
+            if not rows:
+                print("  (Empty table - 0 rows)")
+            else:
+                for r in rows:
+                    print(f"  {r}")
 
-        cur.execute(f"PRAGMA table_info({table});")
-        columns = [col[1] for col in cur.fetchall()]
-        print("Columns:", " | ".join(columns))
-        print("-" * 60)
-
-        cur.execute(f"SELECT * FROM {table} LIMIT 10;")
-        rows = cur.fetchall()
-
-        if not rows:
-            print("(No records found)")
-        else:
-            for row in rows:
-                print(row)
-        print("\n")
-
-    conn.close()
+    await engine.dispose()
+    print("\n" + "=" * 65)
 
 
 if __name__ == "__main__":
-    inspect()
-
+    asyncio.run(inspect_db())

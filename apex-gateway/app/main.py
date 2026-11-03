@@ -3,10 +3,12 @@
 import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
+from pathlib import Path
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import get_settings
@@ -30,10 +32,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
     logger.info(f"Initializing APEX API Gateway v{settings.APEX_VERSION} on {settings.APEX_HOST}:{settings.APEX_PORT}")
 
-    # Initialize SQLite database
+    # Initialize database
     try:
         await init_db()
-        logger.info("SQLite audit database initialized.")
+        db_type = "PostgreSQL" if "postgres" in settings.APEX_DATABASE_URL else "SQLite"
+        logger.info(f"{db_type} database initialized successfully.")
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}", exc_info=True)
 
@@ -137,6 +140,20 @@ def create_app() -> FastAPI:
                 }
             },
         )
+
+    # Web Developer Portal & Static Files
+    static_dir = Path(__file__).resolve().parent.parent / "static"
+    index_html = static_dir / "index.html"
+
+    if static_dir.exists():
+        application.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+    @application.get("/", include_in_schema=False)
+    async def serve_developer_portal():
+        """Serve APEX Web Developer Portal at root."""
+        if index_html.exists():
+            return FileResponse(index_html)
+        return RedirectResponse(url="/docs")
 
     # Register Routers
     application.include_router(health_router)

@@ -15,7 +15,6 @@ from app.config import get_settings
 from app.core.ollama_client import OllamaClient
 from app.core.model_registry import ModelRegistry
 from app.core.model_router import ModelRouter
-from app.core.authentication import verify_api_key
 from app.core.security import decode_access_token, hash_api_key
 from app.database.connection import get_db
 from app.database.models import User, UserApiKey
@@ -62,7 +61,14 @@ async def get_current_user(
     if not provided_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"error": {"message": "Missing authentication credentials.", "type": "authentication_error"}},
+            detail={
+                "error": {
+                    "message": "Missing API key. Please provide Bearer token or x-api-key header.",
+                    "type": "authentication_error",
+                    "param": None,
+                    "code": "invalid_api_key",
+                }
+            },
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -97,7 +103,15 @@ async def get_current_user(
         if not api_key_obj:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail={"error": {"message": "Invalid personal API key.", "type": "invalid_api_key"}},
+                detail={
+                    "error": {
+                        "message": "Incorrect API key provided.",
+                        "type": "authentication_error",
+                        "param": None,
+                        "code": "invalid_api_key",
+                    }
+                },
+                headers={"WWW-Authenticate": "Bearer"},
             )
 
         if api_key_obj.expires_at:
@@ -107,13 +121,29 @@ async def get_current_user(
             if exp < datetime.now(timezone.utc):
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail={"error": {"message": "Personal API key has expired.", "type": "api_key_expired"}},
+                    detail={
+                        "error": {
+                            "message": "Personal API key has expired.",
+                            "type": "authentication_error",
+                            "param": None,
+                            "code": "api_key_expired",
+                        }
+                    },
+                    headers={"WWW-Authenticate": "Bearer"},
                 )
 
         if not api_key_obj.user or not api_key_obj.user.is_active:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail={"error": {"message": "User account inactive.", "type": "user_inactive"}},
+                detail={
+                    "error": {
+                        "message": "User account inactive.",
+                        "type": "authentication_error",
+                        "param": None,
+                        "code": "user_inactive",
+                    }
+                },
+                headers={"WWW-Authenticate": "Bearer"},
             )
 
         return api_key_obj.user
@@ -125,27 +155,56 @@ async def get_current_user(
         if not sub_str:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail={"error": {"message": "JWT token missing subject claim.", "type": "invalid_token"}},
+                detail={
+                    "error": {
+                        "message": "Incorrect API key or invalid token provided.",
+                        "type": "authentication_error",
+                        "param": None,
+                        "code": "invalid_api_key",
+                    }
+                },
+                headers={"WWW-Authenticate": "Bearer"},
             )
         user_id = int(sub_str)
-    except (jwt.PyJWTError, ValueError):
+        stmt = select(User).where(User.id == user_id, User.is_active == True)
+        res = await db.execute(stmt)
+        user = res.scalar_one_or_none()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={
+                    "error": {
+                        "message": "User account not found or inactive.",
+                        "type": "authentication_error",
+                        "param": None,
+                        "code": "user_not_found",
+                    }
+                },
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return user
+    except HTTPException:
+        raise
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"error": {"message": "Invalid or expired access token.", "type": "invalid_token"}},
+            detail={
+                "error": {
+                    "message": "Incorrect API key provided.",
+                    "type": "authentication_error",
+                    "param": None,
+                    "code": "invalid_api_key",
+                }
+            },
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    stmt = select(User).where(User.id == user_id, User.is_active == True)
-    res = await db.execute(stmt)
-    user = res.scalar_one_or_none()
 
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"error": {"message": "User account not found or inactive.", "type": "user_not_found"}},
-        )
-
-    return user
+async def verify_api_key(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Validate incoming API key or token, supporting master system key, user personal keys, and JWT."""
+    return current_user
 
 
 async def get_current_admin(

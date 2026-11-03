@@ -1,9 +1,9 @@
 @echo off
-title APEX Local AI Gateway (LAN Mode)
+title APEX Local AI Gateway (PostgreSQL & LAN Mode)
 echo ========================================================
 echo        Starting APEX Local AI Gateway
-echo        Host: 0.0.0.0 (Accessible across LAN)
-echo        Port: 8000
+echo        PostgreSQL: TestingDBCodingagent on port 5432
+echo        Browser URL: http://localhost:8000/docs
 echo ========================================================
 cd /d "%~dp0"
 .\.venv\Scripts\python.exe apex-gateway\run.py

@@ -135,7 +135,7 @@ async def migrate():
         await dest.commit()
         print(f"      Transferred {len(logs)} audit log entries.")
 
-    print("\n[✓] Full migration completed successfully! You can now view all data in pgAdmin.")
+    print("\n[OK] Full migration completed successfully! You can now view all data in pgAdmin.")
 
 
 if __name__ == "__main__":

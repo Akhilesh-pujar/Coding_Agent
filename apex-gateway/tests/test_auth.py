@@ -94,11 +94,15 @@ async def test_personal_api_key_lifecycle(async_client: AsyncClient):
     key_id = key_data["id"]
     assert raw_key.startswith("apex_live_")
 
-    # 2. Query /v1/auth/me using the personal API key
+    # 2. Query /v1/auth/me and /v1/models using the personal API key
     api_key_headers = {"Authorization": f"Bearer {raw_key}"}
     me_via_key = await async_client.get("/v1/auth/me", headers=api_key_headers)
     assert me_via_key.status_code == 200
     assert me_via_key.json()["username"] == username
+
+    models_via_key = await async_client.get("/v1/models", headers=api_key_headers)
+    assert models_via_key.status_code == 200
+    assert models_via_key.json()["object"] == "list"
 
     # 3. List API keys
     list_resp = await async_client.get("/v1/auth/api-keys", headers=jwt_headers)

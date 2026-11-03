@@ -459,3 +459,76 @@ All 19 tests mock external network resources and verify:
 4. **Port Conflict on 8000**:
    Change `APEX_PORT=8080` in `.env`.
 
+---
+
+## Future Implementation Roadmap
+
+### Phase 1 — Security & Access Control Hardening
+
+| Feature | Description | Priority |
+|---------|-------------|----------|
+| **Role-Based Access Control (RBAC)** | Enforce granular permissions per role (`admin`, `faculty`, `student`). Students get read-only access to specific models; faculty can create rooms and API keys; admins manage users and system config. Currently roles are stored but not enforced beyond the admin guard. | 🔴 High |
+| **Rate Limiting & Throttling** | Per-user and per-API-key request rate limiting (e.g., 60 req/min for students, 200 req/min for faculty) using sliding window counters. Prevents abuse and ensures fair GPU resource allocation across LAN users. | 🔴 High |
+| **Token Usage Quotas** | Daily/monthly token budgets per user or role. Track cumulative `prompt_tokens + completion_tokens` from `request_logs` and reject requests when quota is exceeded. Configurable soft/hard limits with warning thresholds. | 🟡 Medium |
+| **OAuth2 / SSO Integration** | Support external identity providers (Google Workspace, institutional LDAP/Active Directory) alongside local JWT auth for seamless campus-wide single sign-on. | 🟡 Medium |
+| **API Key Scoping** | Allow personal API keys to be scoped to specific models (`apex-fast` only), endpoints (chat only, no admin), or rooms. Stored as JSON permissions on `UserApiKey`. | 🟢 Low |
+
+---
+
+### Phase 2 — Intelligence & Model Management
+
+| Feature | Description | Priority |
+|---------|-------------|----------|
+| **Adaptive Routing with Feedback Loop** | Replace static heuristic scoring with a lightweight ML classifier trained on historical `request_logs` data (model selected, response quality, latency). Auto-improve routing accuracy over time. | 🟡 Medium |
+| **Custom Ollama Modelfile Management** | API endpoints to create, list, and deploy custom Ollama Modelfiles (system prompts, parameter tuning, stop tokens) directly from the gateway. Enable faculty to create domain-specific model profiles (e.g., `apex-compiler`, `apex-networks`). | 🟡 Medium |
+| **Prompt Templates & Presets** | Reusable, shareable prompt templates stored in the database. Faculty can create templates (e.g., "Code Review", "Explain Like I'm 5", "Architecture Critique") that students can invoke by name in any room. | 🟡 Medium |
+| **Response Caching** | Content-addressable cache (SHA-256 of model + messages + temperature) with configurable TTL. Serve identical queries instantly without hitting Ollama. Particularly effective for documentation and explanation queries. | 🟢 Low |
+| **Multi-Model & Multi-Backend Support** | Extend beyond two Ollama models to support additional backends — remote Ollama instances, vLLM servers, or cloud API fallbacks (Gemini, Claude) as overflow when local GPU is saturated. | 🟢 Low |
+
+---
+
+### Phase 3 — Analytics & Observability
+
+| Feature | Description | Priority |
+|---------|-------------|----------|
+| **Admin Analytics Dashboard** | Web-based dashboard (extend `static/index.html` or separate React SPA) visualizing `request_logs` data: requests per hour, average latency by model, token consumption trends, top users, error rate heatmaps, and model routing distribution. | 🔴 High |
+| **Real-Time GPU & System Metrics** | Poll Ollama `/api/ps` and NVIDIA `nvidia-smi` for live GPU utilization, VRAM usage, model load status, and inference queue depth. Surface in `/health` and the admin dashboard. | 🟡 Medium |
+| **Structured JSON Logging** | Migrate from plain text logging to structured JSON log format for easier parsing by log aggregation tools (ELK, Grafana Loki). Add request correlation IDs across all log entries. | 🟡 Medium |
+| **Webhook & Alerting** | Configurable webhook notifications (Discord, Slack, email) triggered by: Ollama going offline, error rate exceeding threshold, GPU temperature warnings, or quota exhaustion. | 🟢 Low |
+
+---
+
+### Phase 4 — Advanced Chat & Collaboration
+
+| Feature | Description | Priority |
+|---------|-------------|----------|
+| **RAG — Retrieval-Augmented Generation** | File upload endpoint (`/v1/rooms/{id}/documents`) supporting PDF, code files, and Markdown. Chunk and embed documents using a local embedding model, store vectors in a lightweight vector DB (ChromaDB/SQLite-VSS), and inject relevant context into prompts automatically. | 🔴 High |
+| **Conversation Export & Import** | Export room history as Markdown, JSON, or PDF. Import conversations from other tools. Enable faculty to share annotated conversations as teaching materials. | 🟡 Medium |
+| **WebSocket Streaming** | Add `ws://` endpoint alongside SSE for lower-latency bidirectional streaming. Better suited for real-time IDE integrations and interactive chat UIs. | 🟡 Medium |
+| **Shared / Collaborative Rooms** | Allow room owners to invite other users with read-only or read-write access. Enable pair-programming-style collaborative AI sessions with activity indicators. | 🟢 Low |
+| **Branching Conversations** | Fork a conversation at any message to explore alternative approaches without losing the original thread. Stored as a tree structure with parent message references. | 🟢 Low |
+
+---
+
+### Phase 5 — Deployment & Infrastructure
+
+| Feature | Description | Priority |
+|---------|-------------|----------|
+| **Docker & Docker Compose** | Containerize the gateway with a `Dockerfile` and `docker-compose.yml` bundling the gateway, PostgreSQL, and optional Ollama sidecar. One-command deployment for new lab machines. | 🔴 High |
+| **Load Balancing Across Multiple GPUs** | Support multiple Ollama instances (e.g., 2× RTX 5060 Ti) with round-robin or least-connections routing. Health-check each backend and failover automatically. | 🟡 Medium |
+| **Automated Backup & Restore** | Scheduled database backups (SQLite snapshots or `pg_dump`) with configurable retention. One-click restore from the admin dashboard. | 🟡 Medium |
+| **HTTPS & TLS Termination** | Built-in TLS support via Uvicorn or reverse proxy config templates (Nginx/Caddy) for secure LAN and remote access. Auto-generate self-signed certificates for lab environments. | 🟡 Medium |
+| **CI/CD Pipeline** | GitHub Actions workflow for automated testing, linting (`ruff`), type checking (`mypy`), and optional deployment to a staging server on every push. | 🟢 Low |
+
+---
+
+### Phase 6 — Ecosystem & Extensibility
+
+| Feature | Description | Priority |
+|---------|-------------|----------|
+| **Plugin / Middleware System** | Extensible middleware pipeline allowing custom pre/post-processing hooks on requests (e.g., content filtering, automatic prompt augmentation, usage billing, PII redaction). | 🟡 Medium |
+| **Model Performance Benchmarking** | Built-in benchmarking tool that runs a standardized prompt suite against all installed models and reports latency percentiles, tokens/sec, and quality scores. Helps faculty decide optimal model configurations. | 🟡 Medium |
+| **Multimodal Support (Vision)** | Extend chat completions to accept image inputs (base64 or file upload) for vision-capable models. Forward to Ollama's multimodal API with proper payload transformation. | 🟢 Low |
+| **OpenAI Assistants API Compatibility** | Implement the Assistants API surface (`/v1/assistants`, `/v1/threads`, `/v1/runs`) for richer agent workflows, enabling local tool-use and function-calling patterns. | 🟢 Low |
+| **Student Playground UI** | Lightweight chat web UI (extend the developer portal) where students can interact with models directly in the browser without needing IDE setup. Include syntax-highlighted code blocks and Markdown rendering. | 🟡 Medium |
+
